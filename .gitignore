@@ -1,0 +1,9 @@
+state/
+data/
+__pycache__/
+*.pyc
+.env
+*.xlsx
+orb_high/
+0
+38%
