@@ -9,15 +9,12 @@ import sqlite3
 import os
 from datetime import datetime
 
-st.set_page_config(page_title="Multi-Strategy Bot", layout="wide", page_icon="📊")
+st.set_page_config(page_title="School Run Bot", layout="wide", page_icon="📊")
 
 DB_PATH = os.path.join("data", "trades.db")
 INITIAL = float(os.getenv("ACCOUNT_SIZE", "1000"))
 STRATEGIES = {
-    "ORB":    {"label": "V04 ORB 15-min (SPY)",         "color": "#2196F3"},
-    "CISD":   {"label": "V07 CISD Sweep (SPY)",          "color": "#4CAF50"},
     "SCHOOL": {"label": "V23 School Run v2.0 (XAUUSD)", "color": "#FF9800"},
-    "FCR":    {"label": "V18 FCR 9:30 v2.0 (SPY)",      "color": "#9C27B0"},
 }
 
 
@@ -64,13 +61,13 @@ def calc_metrics(df: pd.DataFrame) -> dict:
 
 
 # ─── Header ──────────────────────────────────────────────────────────────────
-st.title("📊 Multi-Strategy Trading Bot")
-st.caption(f"Paper trading | Initial ${INITIAL:.0f}/bot | Refreshes every 30s")
+st.title("📊 School Run Bot v2.0 (XAUUSD)")
+st.caption(f"Paper trading | Initial ${INITIAL:.0f} | Refreshes every 30s")
 st.button("🔄 Refresh")
 
 # ─── Overview cards ───────────────────────────────────────────────────────────
 st.subheader("Overview")
-cols = st.columns(4)
+cols = st.columns(1)
 for i, (strat, info) in enumerate(STRATEGIES.items()):
     df = load_trades(strat)
     m  = calc_metrics(df)
