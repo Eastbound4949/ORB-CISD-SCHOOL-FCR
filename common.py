@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import pytz
 import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -22,7 +22,7 @@ INITIAL_BALANCE = float(os.getenv("ACCOUNT_SIZE", "1000"))
 RISK_PCT = {
     "ORB":    float(os.getenv("ORB_RISK_PCT",    "0.005")),  # 0.5%
     "CISD":   float(os.getenv("CISD_RISK_PCT",   "0.010")),  # 1.0%
-    "SCHOOL": float(os.getenv("SCHOOL_RISK_PCT", "0.040")),  # 4.0% — 322% compound CAGR, DD 27.7%
+    "SCHOOL": float(os.getenv("SCHOOL_RISK_PCT", "0.040")),  # 4.0% — RR=6.0: 200.7% compound CAGR, DD 31.2% (live-exit-rule backtest, 2026-07-04)
     "FCR":    float(os.getenv("FCR_RISK_PCT",    "0.010")),  # 1.0% — v2.0 Sharpe 1.59
 }
 
@@ -75,7 +75,31 @@ def get_spy_5min(days: int = 1) -> pd.DataFrame:
 
 
 def get_xauusd_15min(days: int = 2) -> pd.DataFrame:
-    """GC=F 15-min bars, UTC timezone."""
+    """XAU/USD 15-min bars, UTC timezone. Twelve Data primary, yfinance fallback."""
+    td_key = os.getenv("TWELVE_DATA_KEY", "")
+    if td_key:
+        try:
+            outputsize = min(days * 26, 500)  # ~26 bars per trading day at 15m
+            r = requests.get(
+                "https://api.twelvedata.com/time_series",
+                params={"symbol": "XAU/USD", "interval": "15min",
+                        "outputsize": outputsize, "apikey": td_key,
+                        "timezone": "UTC"},
+                timeout=15,
+            )
+            data = r.json()
+            if "values" in data and data["values"]:
+                records = data["values"]
+                df = pd.DataFrame(records)
+                df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
+                df = df.set_index("datetime").sort_index()
+                df = df[["open", "high", "low", "close"]].rename(
+                    columns={"open": "Open", "high": "High", "low": "Low", "close": "Close"}
+                ).astype(float)
+                return df
+        except Exception as e:
+            print(f"[XAUUSD] Twelve Data failed: {e} — falling back to yfinance")
+    # yfinance fallback (GC=F can fail silently on Railway)
     raw = yf.download("GC=F", period=f"{days}d", interval="15m", progress=False, auto_adjust=True)
     if isinstance(raw.columns, pd.MultiIndex):
         raw.columns = raw.columns.get_level_values(0)
@@ -103,8 +127,20 @@ def spy_lock_acquire(strategy: str) -> bool:
                 return False
         except Exception:
             pass
-    with open(SPY_LOCK_FILE, "w") as f:
-        json.dump({"holder": strategy, "since": str(datetime.utcnow())}, f)
+    # atomic exclusive-create prevents TOCTOU race
+    try:
+        with open(SPY_LOCK_FILE, "x") as f:
+            json.dump({"holder": strategy, "since": datetime.now(timezone.utc).isoformat()}, f)
+    except FileExistsError:
+        # another process won the race
+        try:
+            with open(SPY_LOCK_FILE) as f:
+                holder = json.load(f).get("holder")
+            if holder and holder != strategy:
+                print(f"[SPY LOCK] {strategy} blocked — {holder} already in SPY trade")
+                return False
+        except Exception:
+            pass
     return True
 
 
@@ -184,7 +220,7 @@ def get_balance(strategy: str) -> float:
 def update_balance(strategy: str, val: float):
     conn = sqlite3.connect(DB_PATH)
     conn.execute("INSERT OR REPLACE INTO balance VALUES (?,?,?)",
-                 (strategy, val, datetime.utcnow().isoformat()))
+                 (strategy, val, datetime.now(timezone.utc).isoformat()))
     conn.commit()
     conn.close()
 

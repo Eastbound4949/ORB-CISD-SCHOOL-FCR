@@ -1,11 +1,14 @@
 """
 bot_school.py — V23 School Run v2.0 (XAUUSD / GC=F)
 Mark overnight Asia range (00:00-05:00 UTC). Scan any bar 05:00-06:00 UTC
-for first breakout (close beyond range). RR=4.0, SL=midpoint.
+for first breakout (close beyond range). RR=6.0, SL=midpoint.
 v2.0: extended entry window 05:00-06:00 UTC (v1.0 was 05:00 bar only).
-Risk: 4% (optimal from 11.4yr backtest sweep, compound CAGR 322%).
+Risk: 4%. RR re-optimized 2026-07-04 (was 4.0) against a backtest that
+matches the actual live exit rule (hold to 21:00 UTC close, not a fixed
+bar-count) — CAGR 200.7%, MaxDD -31.2%, Sharpe 2.231 at 4% risk.
 """
 from datetime import datetime
+import pandas as pd
 import pytz
 from common import (
     get_xauusd_15min, send_telegram, load_state, save_state,
@@ -15,7 +18,7 @@ _RISK = RISK_PCT["SCHOOL"]
 
 STRATEGY      = "SCHOOL"
 INSTRUMENT    = "XAUUSD"
-RR            = 4.0
+RR            = 6.0
 MIN_RANGE     = 3.0   # min Asia range in $ (gold)
 ASIA_START_H  = 0     # 00:00 UTC
 ASIA_END_H    = 5     # 05:00 UTC = London open proxy
@@ -100,7 +103,7 @@ def run():
     state.update({
         "trade_date": today, "triggered": True, "in_trade": True,
         "direction": direction, "entry": entry, "sl": sl, "tp": tp,
-        "shares": shares, "entry_time": str(entry_bar.index[0]), "risk": risk,
+        "shares": shares, "entry_time": str(ts), "risk": risk,
         "asia_high": asia_high, "asia_low": asia_low,
     })
     save_state(STRATEGY, state)
@@ -131,7 +134,7 @@ def check_exit():
     shares     = state["shares"]
     entry_time = state["entry_time"]
 
-    after_entry = df[df.index > entry_time]
+    after_entry = df[df.index > pd.Timestamp(entry_time)]
     exit_price, exit_type = None, None
 
     for ts, row in after_entry.iterrows():
